@@ -1,20 +1,24 @@
-//Copyright+LGPL
+/*
 
-//-----------------------------------------------------------------------------------------------------------------------------------------------
-// Copyright 2000-2017 Makoto Mori, Nobuyuki Oba
-//-----------------------------------------------------------------------------------------------------------------------------------------------
-// This file is part of tinyfsk.fsk.
+Copyright 2000-2022 Makoto Mori, Nobuyuki Oba, Rafal Lukawiecki
 
-// tinyfsk.fsk is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License
-// as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This file is part of WinKeyerMMTY FSK.
 
-// tinyfsk.fsk is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
+WinKeyerMMTTY FSK is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
 
-// You should have received a copy of the GNU Lesser General Public License along with tinyfsk.fsk.  If not, see
-// <http://www.gnu.org/licenses/>.
-//---------------------------------------------------------------------------------------------------------------------------------------------
+WinKeyerMMTTY FSK is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
 
+You should have received a copy of the GNU Lesser General Public License along
+with WinKeyer FSK for MMTTY, see files COPYING and COPYING.LESSER. If not, see
+http://www.gnu.org/licenses/.
+
+*/
+
 #include <vcl.h>
 #pragma hdrstop
 
@@ -118,11 +122,6 @@ BOOL __fastcall CDLPort::IsFile(LPCSTR pName)
 // CFSK class
 __fastcall CFSK::CFSK(void)
 {
-        m_wPortA = 0;
-        m_bPortD = 0;
-
-        m_ErrorAccess = 0;
-        m_BLen = 5;
         Init();
 #if MeasureAccuracy
         QueryPerformanceFrequency(&m_liFreq);
@@ -145,46 +144,13 @@ void __fastcall CFSK::Init(void)
         m_shift_state = 0;
 }
 //---------------------------------------------------------------------------
-void __fastcall CFSK::SetHandle(HANDLE hPort, int nFSK, int nPTT)
-{
-        m_hPort = INVALID_HANDLE_VALUE;
-        m_nFSK = nFSK;
-        m_nPTT = nPTT;
-        m_aFSK = -1;
-        m_aPTT = -1;
-        m_hPort = hPort;
-        m_ErrorAccess = 0;
-}
 //---------------------------------------------------------------------------
-//      para:   Upper16bits     Speed(eg. 45)
-//                      Lower16bits     b1-b0   Stop (0-1, 1-1.5, 2-2)
-//                                              b5-b2   Length
-void __fastcall CFSK::SetPara(LONG para)
-{
-        m_BLen = (para >> 2) & 0x000f;
-}
-//---------------------------------------------------------------------------
-// This function is called from the TimeProc(). and according to
-//MSDN,  it may be an illegal operation.  MSDN said, Applications
-//should not call any system-defined functions from inside a
-//callback function,  except for several functions.
-// However, the EscapeCommFunction() seems to be no problem on my
-//PCs with Windows 2000 and Windows XP, but I am not sure if it
-//works on every PC.
-// BTW, EnterCriticalSection() and LeaveCriticalSection() had problem
-//on this, and I gave up to use them....
-//
-void __fastcall CFSK::SetPort(int port, int sw)
-{
-}
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-void __fastcall CFSK::SetPTT(int sw)
+void __fastcall CFSK::SetPTT(int sw, TMemo* Memo)
 {
         if( sw )
-                tinyIt( '[' );
+                tinyIt( '[', Memo );
         else
-                tinyIt( ']' );
+                tinyIt( ']', Memo );
         if( m_oPTT != sw ){
                 m_oPTT = sw;
                 if( sw ){
@@ -202,7 +168,7 @@ const int ttable0[32] = {
         'S',    //5
         'I',    //6
         'U',    //7
-        0x0D,   //8
+        '}',    //8
         'D',    //9
         'R',    //10
         'J',    //11
@@ -236,7 +202,7 @@ const int ttable1[32] = {
         '\'',   //5
         '8',    //6
         '7',    //7
-        0x0D,   //8
+        '}',    //8
         '$',    //9
         '4',    //10
         '\'',   //11
@@ -272,24 +238,105 @@ BYTE __fastcall CFSK::baudot2ascii( BYTE c )
         }
 }
 
-BOOL __fastcall CFSK::tinyIt( BYTE c )
+BOOL __fastcall CFSK::tinyIt( BYTE c, TMemo * Memo )
 {
         BYTE d;
         BOOL ret;
         switch( c ){
                 case 0x1f: m_shift_state = 0; return TRUE;
                 case 0x1b: m_shift_state = 1; return TRUE;
+                case 0x00: return TRUE;  // Ignore BLANK
+                case 0x02: return TRUE;  // Ignore LF. Use WK } for CR
                 case '[': d = c; break;
                 case ']': d = c; break;
-                default: d = baudot2ascii(c&0x1F); break;
+                default: d = baudot2ascii(c & 0x1F); break;
         }
-        BYTE data[2] = {0,0};
+
+        if ( !m_oPTT && d == ']' )
+                return TRUE;
+
         DWORD sent;
-        data[0] = d;
-        return WriteFile( m_hPort, data, 1, &sent, NULL );
+#ifndef NDEBUG
+        char bf[128];
+        if ( Memo ) {
+                wsprintf(bf, "tinyIt: %02X", d);
+                Memo->Lines->Add(bf);
+        }
+#endif
+        ret = WriteFile( m_hPort, &d, 1, &sent, NULL );
+
+#ifndef NDEBUG
+        if ( Memo ) {
+                Memo->Lines->Add("RTTY Cmd write status " + AnsiString(ret) +
+                " sent count " + AnsiString(sent));
+                printWKstatus(Memo);
+                if (!ret)
+                        ErrorExit(TEXT("tinyIt"));
+        }
+#endif
+
+        return ret;
 }
 
+void __fastcall CFSK::printWKstatus( TMemo * Memo )
+{
+        BYTE hostcmd[2];
+        DWORD sentlength;
+        DWORD readlength;
+        hostcmd[0] = 0x15;
+        BYTE response[512];
+        char bf[128];
 
+#ifndef NDEBUG
+        WriteFile( m_hPort, hostcmd, 1, &sentlength, NULL );
+        Sleep(50);
+
+        ReadFile( m_hPort, &response, 511, &readlength, NULL );
+
+        if (readlength == 1) {
+                wsprintf(bf, "WK status: %02X", response[0]);
+                Memo->Lines->Add(bf);
+        }
+        else {
+                response[readlength] = 0x00;
+                wsprintf(bf, "Response length %d: %s", readlength, response);
+                Memo->Lines->Add(bf);
+        }
+#endif
+}
+//---------------------------------------------------------------------------
+void CFSK::ErrorExit(LPTSTR lpszFunction)
+{
+    // Retrieve the system error message for the last-error code
+
+    LPVOID lpMsgBuf;
+    LPVOID lpDisplayBuf;
+    DWORD dw = GetLastError();
+
+    FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_SYSTEM |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        dw,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR) &lpMsgBuf,
+        0, NULL );
+
+    // Display the error message and exit the process
+
+    lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
+        (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+    snprintf((LPTSTR)lpDisplayBuf,
+        LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+        TEXT("%s failed with error %d: %s"),
+        lpszFunction, dw, lpMsgBuf);
+    MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
+
+    LocalFree(lpMsgBuf);
+    LocalFree(lpDisplayBuf);
+    ExitProcess(dw);
+}
 //***************************************************************************
 // TExtFSK (MainWindow) class
 //---------------------------------------------------------------------------
@@ -300,8 +347,6 @@ __fastcall TExtFSK::TExtFSK(TComponent* Owner)
         Top = 0;
         Left = 0;
         m_hPort = INVALID_HANDLE_VALUE;
-        m_wPortA = 0;
-        m_wLPTA = 0;
         m_X = 0;
 
         m_IniName = sys.m_ModuleName;
@@ -323,9 +368,6 @@ __fastcall TExtFSK::TExtFSK(TComponent* Owner)
 
 void __fastcall TExtFSK::FormClose(TObject *Sender, TCloseAction &Action)
 {
-        if( IsOpen() ){
-                m_fsk.SetPort(RGPTT->ItemIndex, CBInvPTT->Checked);
-        }
         ClosePort();
         WriteIniFile();
 }
@@ -334,15 +376,6 @@ void __fastcall TExtFSK::ReadIniFile(void)
 {
         TMemIniFile *pIniFile = new TMemIniFile(m_IniName);
 
-        if( !sys.m_WinNT || sys.m_pDLPort ){
-                AnsiString as = pIniFile->ReadString("DirectAccess", "LPTADR", "0");
-                m_wLPTA = htow(as.c_str());
-                if( m_wLPTA ){
-                        char bf[32];
-                        wsprintf(bf, "LPT$%X", m_wLPTA);
-                        PortName->Items->Add(bf);
-                }
-        }
         Top = pIniFile->ReadInteger("Window", "Top", Top);
         Left = pIniFile->ReadInteger("Window", "Left", Left);
         WindowState = (TWindowState)pIniFile->ReadInteger("Window", "State", WindowState);
@@ -353,8 +386,7 @@ void __fastcall TExtFSK::ReadIniFile(void)
                 if( n < 0 ) n = 0;
         }
         PortName->ItemIndex = n;
-        RGFSK->ItemIndex = pIniFile->ReadInteger("Settings", "FSK", RGFSK->ItemIndex);
-        RGPTT->ItemIndex = pIniFile->ReadInteger("Settings", "PTT", RGPTT->ItemIndex);
+        RGDiddle->ItemIndex = pIniFile->ReadInteger("Settings", "Diddle", RGDiddle->ItemIndex);
         CBInvFSK->Checked = pIniFile->ReadInteger("Settings", "InvFSK", CBInvFSK->Checked);
         CBInvPTT->Checked = pIniFile->ReadInteger("Settings", "InvPTT", CBInvPTT->Checked);
         delete pIniFile;
@@ -367,15 +399,9 @@ void __fastcall TExtFSK::WriteIniFile(void)
         pIniFile->WriteInteger("Window", "Left", Left);
         pIniFile->WriteInteger("Window", "State", WindowState);
         pIniFile->WriteString("Settings", "Port", PortName->Items->Strings[PortName->ItemIndex]);
-        pIniFile->WriteInteger("Settings", "FSK", RGFSK->ItemIndex);
-        pIniFile->WriteInteger("Settings", "PTT", RGPTT->ItemIndex);
+        pIniFile->WriteInteger("Settings", "Diddle", RGDiddle->ItemIndex);
         pIniFile->WriteInteger("Settings", "InvFSK", CBInvFSK->Checked);
         pIniFile->WriteInteger("Settings", "InvPTT", CBInvPTT->Checked);
-        if( !sys.m_WinNT || sys.m_pDLPort ){
-                char bf[32];
-                wsprintf(bf, "%X", m_wLPTA);
-                pIniFile->WriteString("DirectAccess", "LPTADR", bf);
-        }
         pIniFile->UpdateFile();
         delete pIniFile;
 }
@@ -385,22 +411,6 @@ void __fastcall TExtFSK::UpdatePort()
         if( sys.m_WinNT && !sys.m_pDLPort ) return;
 
         m_DisEvent++;
-        if( m_wPortA ){
-                RGFSK->Items->Strings[0] = "D0-D3";
-                RGFSK->Items->Strings[1] = "D4-D7";
-                RGFSK->Items->Strings[2] = "STROBE";
-                RGPTT->Items->Strings[0] = "D0-D3";
-                RGPTT->Items->Strings[1] = "D4-D7";
-                RGPTT->Items->Strings[2] = "STROBE";
-        }
-        else {
-                RGFSK->Items->Strings[0] = "TXD";
-                RGFSK->Items->Strings[1] = "RTS";
-                RGFSK->Items->Strings[2] = "DTR";
-                RGPTT->Items->Strings[0] = "TXD";
-                RGPTT->Items->Strings[1] = "RTS";
-                RGPTT->Items->Strings[2] = "DTR";
-        }
         m_DisEvent--;
 }
 //---------------------------------------------------------------------------
@@ -408,14 +418,8 @@ void __fastcall TExtFSK::UpdateComStat(void)
 {
         char bf[128];
 
-        if( m_wPortA ){
-                wsprintf(bf, "Addr:%X", m_wPortA);
-                LComStat->Color = clYellow;
-        }
-        else {
-                wsprintf(bf, "Status:%s", m_hPort != INVALID_HANDLE_VALUE ? "OK" : "NG");
-                LComStat->Color = m_hPort != INVALID_HANDLE_VALUE ? clBtnFace : clRed;
-        }
+        wsprintf(bf, "Status:%s", m_hPort != INVALID_HANDLE_VALUE ? "OK" : "NG");
+        LComStat->Color = m_hPort != INVALID_HANDLE_VALUE ? clBtnFace : clRed;
         LComStat->Caption = bf;
 }
 //---------------------------------------------------------------------------
@@ -424,35 +428,21 @@ void __fastcall TExtFSK::OpenPort(void)
         ClosePort();
         OpenPort_();
         UpdateComStat();
+        m_fsk.m_hPort = m_hPort;
         m_fsk.SetInvFSK(CBInvFSK->Checked);
         m_fsk.SetInvPTT(CBInvPTT->Checked);
-        m_fsk.SetHandle(m_hPort, RGFSK->ItemIndex, RGPTT->ItemIndex);
 }
 //---------------------------------------------------------------------------
 BOOL __fastcall TExtFSK::OpenPort_(void)
 {
         AnsiString pname = PortName->Items->Strings[PortName->ItemIndex];
 
-        m_wPortA = 0;
-        m_fsk.SetLPT(m_wPortA);
-
-        if( !strncmpi(pname.c_str(), "LPT", 3) ){
-                WORD n = htow(pname.c_str() + 3);
-                if( (n >= 1) && (n <= 3) ){
-                        n--;
-                        m_wPortA = m_wLPT[n];
-                }
-                else {
-                        m_wPortA = m_wLPTA;
-                }
-                if( m_wPortA ){
-                        m_fsk.SetLPT(m_wPortA);
-                        m_hPort = HANDLE(DWORD(INVALID_HANDLE_VALUE) + 1);
-                        return TRUE;
-                }
-        }
         if( pname.SubString(1,3) == "COM" ){
                 pname = "\\\\.\\" + pname;
+        }
+        else {
+                m_hPort = INVALID_HANDLE_VALUE;
+                return FALSE;
         }
 
         m_hPort = ::CreateFile( pname.c_str(),
@@ -462,13 +452,15 @@ BOOL __fastcall TExtFSK::OpenPort_(void)
                                 FILE_ATTRIBUTE_NORMAL,
                                 NULL
                                 );
-        if( m_hPort == INVALID_HANDLE_VALUE ) return FALSE;
+        if( m_hPort == INVALID_HANDLE_VALUE )
+                return FALSE;
         if( ::SetupComm( m_hPort, DWORD(256), DWORD(2) ) == FALSE ){
                 ::CloseHandle(m_hPort);
                 m_hPort = INVALID_HANDLE_VALUE;
                 return FALSE;
         }
-        ::PurgeComm( m_hPort, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR );
+        ::PurgeComm( m_hPort,
+                PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR );
 
         COMMTIMEOUTS TimeOut;
 
@@ -518,7 +510,7 @@ BOOL __fastcall TExtFSK::OpenPort_(void)
         Show();
         Memo->Lines->Add("Connecting to WinKeyer...");
 
-        char hostcmd[2];
+        BYTE hostcmd[2];
         char response[512];
         DWORD sentlength;
         DWORD readlength;
@@ -536,7 +528,7 @@ BOOL __fastcall TExtFSK::OpenPort_(void)
                 int ver_response;
                 int ver_major;
                 int ver_minor;
-                int ver_release = 0;
+                unsigned ver_release = 0;
 
                 ver_response = (int) response[0];
                 ver_major = ver_response / 10;
@@ -551,7 +543,7 @@ BOOL __fastcall TExtFSK::OpenPort_(void)
                 response[readlength] = 0x00;
 
                 if (readlength == 1)
-                        ver_release = (int) response[0];
+                        ver_release = (unsigned) response[0];
 
                 snprintf(statusMessage, 511,
                         "WinKeyer OK. Version %d.%d Rev %d\n",
@@ -574,7 +566,7 @@ BOOL __fastcall TExtFSK::OpenPort_(void)
 //---------------------------------------------------------------------------
 void __fastcall TExtFSK::ClosePort(void)
 {
-        char hostcmd[2];
+        BYTE hostcmd[2];
         DWORD sentlength;
 
         hostcmd[0] = 0x00;
@@ -582,16 +574,13 @@ void __fastcall TExtFSK::ClosePort(void)
 
         WriteFile( m_hPort, hostcmd, 2, &sentlength, NULL );
 
-        if( m_wPortA ){
-                m_wPortA = 0;
-                m_hPort = INVALID_HANDLE_VALUE;
-        }
         if( IsOpen() ){
                 m_fsk.Disable();
                 ::CloseHandle(m_hPort);
                 m_hPort = INVALID_HANDLE_VALUE;
         }
         UpdateComStat();
+        m_fsk.m_hPort = m_hPort;
 }
 //---------------------------------------------------------------------------
 //      para:   Upper16bits     Speed(eg. 45)
@@ -599,16 +588,29 @@ void __fastcall TExtFSK::ClosePort(void)
 //                                              b5-b2   Length
 void __fastcall TExtFSK::SetPara()
 {
-        Memo->Lines->Add(m_para);
-        m_fsk.SetPara(m_para);
+        int priorPTTstate;
         char ss[32];
-        char data[4];
+        BYTE data[4];
+        DWORD sent;
         int s_baud;
+
+        // Close PTT and abort any comms in progress before setting
+        // or changing WK params, then reopen
+        priorPTTstate = m_ptt;
+        if ( m_ptt ) {
+                //data[0] = 0x5c; // \ command (abort comms)
+                //WriteFile( m_hPort, data, 1, &sent, NULL );
+                SetPTT(0, TRUE);
+        }
 
         m_baud = m_para >> 16;
 
-        data[0] = 0x00;
-        data[1] = 0x13;
+        data[0] = 0x00;  // WK Admin
+        data[1] = 0x13;  // WK RTTY Mode Enable
+        data[2] = data[3] = 0x00;
+
+        // WK RTTY Params
+        // RTTY Enable and Baud rate
         switch( m_baud ){
 #ifdef ADDITIONAL_BAUDRATE
         case 22:  data[2] = 0x80;  s_baud = 45;  strcpy( ss, "45.45" ); break;
@@ -624,9 +626,55 @@ void __fastcall TExtFSK::SetPara()
 #endif
         default:  data[2] = 0x80;  s_baud = 45;  strcpy( ss, "45.45" ); break;
         }
-        data[3] = 0x00;
-        DWORD sent;
-        WriteFile( m_hPort, data, 4, &sent, NULL );
+
+        // Diddle or not
+        switch( RGDiddle->ItemIndex ) {
+                case diddleNONE:
+                        data[3] = 0x00;
+                        break;
+                case diddleBLANKS:
+                        data[2] |= 0x40;
+                        data[3] = 0x00;
+                        break;
+                case diddleLTTRS:
+                        data[2] |= 0x40;
+                        data[3] = 0x04;
+                        break;
+        }
+
+        // Stop bits, only choices are 2 or 1.5
+        if ( m_para & 0x01 )
+                data[3] |= 0x08;   // 1.5 stop bits, otherwise defaults to 2
+
+        // TODO: USOS, FSKMAP, AUTOCRLF, REVERSE
+
+        int ret;
+        ret = WriteFile( m_hPort, data, 4, &sent, NULL );
+
+#ifndef NDEBUG
+        Memo->Lines->Add("RTTY Cmd write status " + AnsiString(ret) +
+                " sent count " + AnsiString(sent));
+        char bf[128];
+        wsprintf(bf, "%02X", data[0]);
+        Memo->Lines->Add(bf);
+        wsprintf(bf, "%02X", data[1]);
+        Memo->Lines->Add(bf);
+        wsprintf(bf, "%02X", data[2]);
+        Memo->Lines->Add(bf);
+        wsprintf(bf, "%02X", data[3]);
+        Memo->Lines->Add(bf);
+
+        m_fsk.printWKstatus(Memo);
+
+
+        
+        BYTE teststr[64] = "[ALABAMA01234567890123456789012345678901234567]]]";
+
+        ret = WriteFile( m_hPort, teststr, 47, &sent, NULL );
+        Memo->Lines->Add("Test write status " + AnsiString(ret) +
+                " sent count " + AnsiString(sent));
+#endif
+
         setInvFsk(CBInvFSK->Checked);
         strcat( ss, " baud" );
         LabelBaud->Caption = ss;
@@ -634,13 +682,18 @@ void __fastcall TExtFSK::SetPara()
                 LabelBaud->Font->Color = clRed;
         else
                 LabelBaud->Font->Color = clBlack;
+
+        if ( priorPTTstate ) {
+                SetPTT(1, TRUE);
+        }
+        m_fsk.printWKstatus(Memo);
 }
 //---------------------------------------------------------------------------
 //PTT off is called when a parameter is changed in MMTTY
 void __fastcall TExtFSK::SetPTT(int sw, int msg)
 {
         m_ptt = sw;
-        m_fsk.SetPTT(sw);
+        m_fsk.SetPTT(sw, Memo);
         m_X = 0;
         if( msg ){
                 if( m_WindowState == wsMinimized) return;
@@ -659,7 +712,7 @@ void __fastcall TExtFSK::PutChar(BYTE c)
         else
                 sleep_time = ( 1.0/(float)m_baud ) * 1000.0 * 7.45;// * 0.80;
         m_fsk.m_StgD = c;
-        m_fsk.tinyIt(c);
+        m_fsk.tinyIt(c, Memo);
         Sleep( (int)sleep_time );
         m_fsk.m_StgD = -1;
         if( m_WindowState == wsMinimized) return;
@@ -672,6 +725,13 @@ void __fastcall TExtFSK::PutChar(BYTE c)
                 m_shift_state = 1;
                 return;
         }
+        else if( c == 0x02 ){ // Ignore LF, only process CR using WK '}'
+                return;
+        }
+        else if( c == 0x00 ){ // Ignore BLANK
+                return;
+        }
+
         c = m_fsk.baudot2ascii(c);
 #endif
         char bf[128];
@@ -718,41 +778,17 @@ void __fastcall TExtFSK::SBMinClick(TObject *Sender)
         m_X = 0;
 }
 //---------------------------------------------------------------------------
-void __fastcall TExtFSK::RGFSKClick(TObject *Sender)
+void __fastcall TExtFSK::RGDiddleClick(TObject *Sender)
 {
         if( m_DisEvent ) return;
 
-        if( RGFSK->ItemIndex == RGPTT->ItemIndex ){
-                m_DisEvent++;
-                RGPTT->ItemIndex = (RGFSK->ItemIndex != ptRTS) ? ptRTS : ptDTR;
-                m_DisEvent--;
-        }
-        m_fsk.SetHandle(m_hPort, RGFSK->ItemIndex, RGPTT->ItemIndex);
-}
-//---------------------------------------------------------------------------
-void __fastcall TExtFSK::RGPTTClick(TObject *Sender)
-{
-        if( m_DisEvent ) return;
-
-        if( RGFSK->ItemIndex == RGPTT->ItemIndex ){
-                m_DisEvent++;
-                RGFSK->ItemIndex = (RGPTT->ItemIndex != ptTXD) ? ptTXD : ptRTS;
-                m_DisEvent--;
-        }
-        m_fsk.SetHandle(m_hPort, RGFSK->ItemIndex, RGPTT->ItemIndex);
+        m_DisEvent++;
+        SetPara();
+        m_DisEvent--;
 }
 //---------------------------------------------------------------------------
 void __fastcall TExtFSK::setInvFsk( bool b )
 {
-        BYTE data[4] = { '~', 0, 0x0D, 0x0A };
-        DWORD sent;
-        if( b ){
-                data[1] = '0';
-        }
-        else{
-                data[1] = '1';
-        }
-        WriteFile( m_hPort, data, 4, &sent, NULL );
 }
 void __fastcall TExtFSK::CBInvFSKClick(TObject *Sender)
 {
@@ -772,4 +808,5 @@ void __fastcall TExtFSK::FormPaint(TObject *Sender)
         m_WindowState = WindowState;
 }
 //---------------------------------------------------------------------------
+
 

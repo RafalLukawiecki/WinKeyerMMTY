@@ -1,19 +1,23 @@
-//Copyright+LGPL
+/*
 
-//-----------------------------------------------------------------------------------------------------------------------------------------------
-// Copyright 2000-2017 Makoto Mori, Nobuyuki Oba
-//-----------------------------------------------------------------------------------------------------------------------------------------------
-// This file is part of tinyfsk.fsk.
+Copyright 2000-2022 Makoto Mori, Nobuyuki Oba, Rafal Lukawiecki
 
-// tinyfsk.fsk is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License
-// as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This file is part of WinKeyerMMTY FSK.
 
-// tinyfsk.fsk is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
+WinKeyerMMTTY FSK is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
 
-// You should have received a copy of the GNU Lesser General Public License along with tinyfsk.fsk.  If not, see
-// <http://www.gnu.org/licenses/>.
-//-----------------------------------------------------------------------------------------------------------------------------------------------
+WinKeyerMMTTY FSK is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along
+with WinKeyer FSK for MMTTY, see files COPYING and COPYING.LESSER. If not, see
+http://www.gnu.org/licenses/.
+
+*/
 
 #include <vcl.h>
 #pragma hdrstop
@@ -31,10 +35,12 @@ int WINAPI DllEntryPoint(HINSTANCE hinst, unsigned long reason, void*)
 			pMain = NULL;
 
 			memset(&sys, 0, sizeof(sys));
-			::GetModuleFileName(hinst, sys.m_ModuleName, sizeof(sys.m_ModuleName));
+			::GetModuleFileName(hinst, sys.m_ModuleName,
+                                sizeof(sys.m_ModuleName));
 			::SetDirName(sys.m_BgnDir, sys.m_ModuleName);
 			sys.m_dwVersion = ::GetVersion();
-			sys.m_WinNT = (sys.m_dwVersion < 0x80000000) ? TRUE : FALSE;
+			sys.m_WinNT =
+                                (sys.m_dwVersion < 0x80000000) ? TRUE : FALSE;
 
 			sys.m_pDLPort = NULL;
 			if( sys.m_WinNT ){
