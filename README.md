@@ -14,9 +14,9 @@ tab.
 1. When the extension starts, it will show a small config and status
 window. Select the COM port on which your WinKeyer is running.
 
-Please note, the baud rate and the number of stop bits are taken from the MMTTY
-configuration settings.  Optionally, configure its additional settings using that
-window.
+Please note, the baud rate is taken from the MMTTY
+configuration settings.  Remaining settings need to be configured in the WinKeyerFSK 
+window, as they are not read from MMTTY.
 
 ## How to Build
 
