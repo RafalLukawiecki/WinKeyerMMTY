@@ -138,9 +138,7 @@ void __fastcall CFSK::Init(void)
         m_Sequence = 0;
         m_Count = 0;
         m_oFSK = 1;
-        m_aFSK = -1;
         m_oPTT = 0;
-        m_aPTT = -1;
         m_shift_state = 0;
 }
 //---------------------------------------------------------------------------
@@ -387,8 +385,11 @@ void __fastcall TExtFSK::ReadIniFile(void)
         }
         PortName->ItemIndex = n;
         RGDiddle->ItemIndex = pIniFile->ReadInteger("Settings", "Diddle", RGDiddle->ItemIndex);
-        CBInvFSK->Checked = pIniFile->ReadInteger("Settings", "InvFSK", CBInvFSK->Checked);
-        CBInvPTT->Checked = pIniFile->ReadInteger("Settings", "InvPTT", CBInvPTT->Checked);
+        RGStopBits->ItemIndex = pIniFile->ReadInteger("Settings", "StopBits", RGStopBits->ItemIndex);
+        CBReverse->Checked = pIniFile->ReadInteger("Settings", "Reverse", CBReverse->Checked);
+        CBFSKMap->Checked = pIniFile->ReadInteger("Settings", "FSKMAP", CBFSKMap->Checked);
+        CBUSOS->Checked = pIniFile->ReadInteger("Settings", "USOS", CBUSOS->Checked);
+        CBAutoCRLF->Checked = pIniFile->ReadInteger("Settings", "AutoCRLF", CBAutoCRLF->Checked);
         delete pIniFile;
 }
 //---------------------------------------------------------------------------
@@ -400,8 +401,11 @@ void __fastcall TExtFSK::WriteIniFile(void)
         pIniFile->WriteInteger("Window", "State", WindowState);
         pIniFile->WriteString("Settings", "Port", PortName->Items->Strings[PortName->ItemIndex]);
         pIniFile->WriteInteger("Settings", "Diddle", RGDiddle->ItemIndex);
-        pIniFile->WriteInteger("Settings", "InvFSK", CBInvFSK->Checked);
-        pIniFile->WriteInteger("Settings", "InvPTT", CBInvPTT->Checked);
+        pIniFile->WriteInteger("Settings", "StopBits", RGStopBits->ItemIndex);
+        pIniFile->WriteInteger("Settings", "Reverse", CBReverse->Checked);
+        pIniFile->WriteInteger("Settings", "FSKMAP", CBFSKMap->Checked);
+        pIniFile->WriteInteger("Settings", "USOS", CBUSOS->Checked);
+        pIniFile->WriteInteger("Settings", "AutoCRLF", CBAutoCRLF->Checked);
         pIniFile->UpdateFile();
         delete pIniFile;
 }
@@ -429,8 +433,6 @@ void __fastcall TExtFSK::OpenPort(void)
         OpenPort_();
         UpdateComStat();
         m_fsk.m_hPort = m_hPort;
-        m_fsk.SetInvFSK(CBInvFSK->Checked);
-        m_fsk.SetInvPTT(CBInvPTT->Checked);
 }
 //---------------------------------------------------------------------------
 BOOL __fastcall TExtFSK::OpenPort_(void)
@@ -544,10 +546,15 @@ BOOL __fastcall TExtFSK::OpenPort_(void)
 
                 if (readlength == 1)
                         ver_release = (unsigned) response[0];
+                if (ver_response >= 31)
+                        snprintf(statusMessage, 511,
+                                "WinKeyer OK. Version %d.%d Rev %d\n",
+                                ver_major, ver_minor, ver_release);
+                else
+                        snprintf(statusMessage, 511,
+                                "WRONG WinKeyer firmware version! RTTY only works with v3.1 or newer. Connected version %d.%d Rev %d\n",
+                                ver_major, ver_minor, ver_release);
 
-                snprintf(statusMessage, 511,
-                        "WinKeyer OK. Version %d.%d Rev %d\n",
-                        ver_major, ver_minor, ver_release);
                 statusMessage[511] = 0x00;
                 Memo->Lines->Add(statusMessage);
         }
@@ -612,18 +619,10 @@ void __fastcall TExtFSK::SetPara()
         // WK RTTY Params
         // RTTY Enable and Baud rate
         switch( m_baud ){
-#ifdef ADDITIONAL_BAUDRATE
-        case 22:  data[2] = 0x80;  s_baud = 45;  strcpy( ss, "45.45" ); break;
-#endif
         case 45:  data[2] = 0x80;  s_baud = 45;  strcpy( ss, "45.45" ); break;
         case 50:  data[2] = 0x81;  s_baud = 50;  strcpy( ss, "50" ); break;
-#ifdef ADDITIONAL_BAUDRATE
-        case 56:  data[2] = 0x81;  s_baud = 50;  strcpy( ss, "50" ); break;
-#endif
         case 75:  data[2] = 0x82;  s_baud = 75;  strcpy( ss, "75" ); break;
-#ifdef ADDITIONAL_BAUDRATE
         case 100: data[2] = 0x83;  s_baud = 100;  strcpy( ss, "100" ); break;
-#endif
         default:  data[2] = 0x80;  s_baud = 45;  strcpy( ss, "45.45" ); break;
         }
 
@@ -642,11 +641,25 @@ void __fastcall TExtFSK::SetPara()
                         break;
         }
 
-        // Stop bits, only choices are 2 or 1.5
-        if ( m_para & 0x01 )
-                data[3] |= 0x08;   // 1.5 stop bits, otherwise defaults to 2
+        // Stop bits, only choices supported by WK are 2 or 1.5
+        if ( RGStopBits->ItemIndex == stopbits15 )
+                data[3] |= 0x08;
 
-        // TODO: USOS, FSKMAP, AUTOCRLF, REVERSE
+        // Reverse Mark/Space
+        if ( CBReverse->Checked )
+                data[2] |= 0x04;
+
+        // FSKMAP (Swap FSK and PTT pins)
+        if ( CBFSKMap->Checked )
+                data[2] |= 0x20;
+
+        // USOS
+        if ( CBUSOS->Checked )
+                data[3] |= 0x01;
+
+        // AUTOCRLF
+        if ( CBAutoCRLF->Checked )
+                data[2] |= 0x10;
 
         int ret;
         ret = WriteFile( m_hPort, data, 4, &sent, NULL );
@@ -675,7 +688,6 @@ void __fastcall TExtFSK::SetPara()
                 " sent count " + AnsiString(sent));
 #endif
 
-        setInvFsk(CBInvFSK->Checked);
         strcat( ss, " baud" );
         LabelBaud->Caption = ss;
         if( m_baud != s_baud )
@@ -695,7 +707,7 @@ void __fastcall TExtFSK::SetPTT(int sw, int msg)
         m_ptt = sw;
         m_fsk.SetPTT(sw, Memo);
         m_X = 0;
-        if( msg ){
+        if( msg && CBDebugOutput->Checked ){
                 if( m_WindowState == wsMinimized) return;
                 Memo->Lines->Add(sw ? "PTT ON" : "PTT OFF");
         }
@@ -715,7 +727,8 @@ void __fastcall TExtFSK::PutChar(BYTE c)
         m_fsk.tinyIt(c, Memo);
         Sleep( (int)sleep_time );
         m_fsk.m_StgD = -1;
-        if( m_WindowState == wsMinimized) return;
+        if( m_WindowState == wsMinimized || ! CBDebugOutput->Checked ) return;
+
 #ifndef PRINT_ORIGINAL_CHAR
         if( c == 0x1f ){
                 m_shift_state = 0;
@@ -777,31 +790,7 @@ void __fastcall TExtFSK::SBMinClick(TObject *Sender)
         Memo->Lines->Clear();
         m_X = 0;
 }
-//---------------------------------------------------------------------------
-void __fastcall TExtFSK::RGDiddleClick(TObject *Sender)
-{
-        if( m_DisEvent ) return;
 
-        m_DisEvent++;
-        SetPara();
-        m_DisEvent--;
-}
-//---------------------------------------------------------------------------
-void __fastcall TExtFSK::setInvFsk( bool b )
-{
-}
-void __fastcall TExtFSK::CBInvFSKClick(TObject *Sender)
-{
-        if( m_DisEvent ) return;
-        //m_fsk.SetInvFSK(CBInvFSK->Checked);
-        setInvFsk(CBInvFSK->Checked);
-}
-//---------------------------------------------------------------------------
-void __fastcall TExtFSK::CBInvPTTClick(TObject *Sender)
-{
-        if( m_DisEvent ) return;
-        m_fsk.SetInvPTT(CBInvPTT->Checked);
-}
 //---------------------------------------------------------------------------
 void __fastcall TExtFSK::FormPaint(TObject *Sender)
 {
@@ -809,4 +798,14 @@ void __fastcall TExtFSK::FormPaint(TObject *Sender)
 }
 //---------------------------------------------------------------------------
 
+
+void __fastcall TExtFSK::CBClick(TObject *Sender)
+{
+        if( m_DisEvent ) return;
+
+        m_DisEvent++;
+        SetPara();
+        m_DisEvent--;        
+}
+//---------------------------------------------------------------------------
 

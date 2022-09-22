@@ -62,6 +62,11 @@ enum {
         diddleBLANKS,
         diddleLTTRS,
 };
+// Stop bit modes
+enum {
+        stopbits15,
+        stopbits2,
+};
 
 void __fastcall SetDirName(LPSTR t, LPCSTR pName);
 
@@ -110,11 +115,9 @@ private:
 
         volatile int    m_invFSK;
         volatile int    m_oFSK;
-        volatile int    m_aFSK;
 
         volatile int    m_invPTT;
         volatile int    m_oPTT;
-        volatile int    m_aPTT;
 
         int m_shift_state;
 
@@ -140,11 +143,9 @@ public:
         };
         inline void __fastcall SetInvFSK(int inv){
                 m_invFSK = inv;
-                m_aFSK = -1;
         };
         inline void __fastcall SetInvPTT(int inv){
                 m_invPTT = inv;
-                m_aPTT = -1;
         };
         inline void __fastcall SetDelay(int n){m_Count = n;};
 #if MeasureAccuracy
@@ -165,20 +166,19 @@ __published:    // IDE
         TComboBox *PortName;
         TLabel *LComStat;
         TRadioGroup *RGDiddle;
-        TCheckBox *CBInvFSK;
-        TCheckBox *CBInvPTT;
         TSpeedButton *SBMin;
         TLabel *LabelBaud;
+        TCheckBox *CBReverse;
+        TCheckBox *CBFSKMap;
+        TCheckBox *CBUSOS;
+        TCheckBox *CBAutoCRLF;
+        TRadioGroup *RGStopBits;
+        TCheckBox *CBDebugOutput;
         void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
         void __fastcall PortNameChange(TObject *Sender);
-
         void __fastcall SBMinClick(TObject *Sender);
-        void __fastcall CBInvFSKClick(TObject *Sender);
-        void __fastcall CBInvPTTClick(TObject *Sender);
-        void __fastcall RGDiddleClick(TObject *Sender);
-
-
         void __fastcall FormPaint(TObject *Sender);
+        void __fastcall CBClick(TObject *Sender);
         //void __fastcall RadioGroupSpeedClick(TObject *Sender);
 private:
         int             m_WindowState;
