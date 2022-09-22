@@ -18,6 +18,8 @@ Please note, the baud rate is taken from the MMTTY
 configuration settings.  Remaining settings need to be configured in the WinKeyerFSK 
 window, as they are not read from MMTTY.
 
+<img width="349" alt="WinKeyer FSK MMTTY Config" src="https://user-images.githubusercontent.com/22912705/191830132-8bfae0de-d176-4f9a-94dc-30f4c023332c.png">
+
 ## How to Build
 
 Borland C++ Builder version 5.0 is needed to build this project.
