@@ -28,6 +28,21 @@ window, as they are not read from MMTTY.
 
 <img width="349" alt="WinKeyer FSK MMTTY Config" src="https://user-images.githubusercontent.com/22912705/191830132-8bfae0de-d176-4f9a-94dc-30f4c023332c.png">
 
+## Limitations and Known Issues
+
+1. WinKeyer does not support all MMTTY options. Only 5-bit length is supported (6, 7, 8 are not). Only 1.5-bit and 2-bit stop lengths
+are supported (not 1). Only 45.45, 50, 75, and 100 baud speeds are supported. Hopefully this does not matter, as
+45.45 baud, 5-bit length and 1.5 stop bits is the most popular, widely used RTTY configuration.
+1. WinKeyer does not accept explicitly sent CR, LF, FIGS, or LTRS codes. It automatically sends FIGS and LTRS as needed,
+including when diddling. When MMTTY or DXLog send a CR or LF, this extension translates that to WinKeyer's } character, which
+it then sends as a sequence of CR CR LF LTRS. There is some logic in the extension to take care of different scenarios in terms of
+the order in which CR or LF arrive from MMTTY or from DXLog. It should not affect operation, but it means that printing
+RTTY art is not possible, because there is no way to issue a CR without an LF.
+1. There is no way to send the BELL character at present.
+
+If there are any known and unresolved issues they will be listed in the [Issues section](https://github.com/RafalLukawiecki/WinKeyerMMTY/issues).
+Please report them there. Additional discussions are welcome on [MMTTY Groups.io](https://groups.io/g/MMTTY-SB-RTTY/topics).
+
 ## How to Build
 
 Borland C++ Builder version 5.0 is needed to build this project. It is ancient, but it still works well if you can find it.
