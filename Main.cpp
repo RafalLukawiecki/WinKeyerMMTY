@@ -160,13 +160,13 @@ void __fastcall CFSK::SetPTT(int sw, TMemo* Memo)
 const int ttable0[32] = {
         0x00,   //0 null is null
         'E',    //1
-        0x0A,   //2
+        '>',   //2 LF
         'A',    //3
         ' ',    //4
         'S',    //5
         'I',    //6
         'U',    //7
-        '}',    //8
+        '<',    //8 CR
         'D',    //9
         'R',    //10
         'J',    //11
@@ -185,22 +185,22 @@ const int ttable0[32] = {
         'O',    //24
         'B',    //25
         'G',    //26
-        0x00,   //27 figure
+        '@',   //27 figure
         'M',    //28
         'X',    //29
         'V',    //30
-        0x00    //31 letter
+        '%'    //31 letter
 };
 const int ttable1[32] = {
         0x00,   //0 null is null
         '3',    //1
-        0x0A,   //2
+        '>',   //2 LF
         '-',    //3
         ' ',    //4
         '\'',   //5
         '8',    //6
         '7',    //7
-        '}',    //8
+        '<',    //8 CR
         '$',    //9
         '4',    //10
         '\'',   //11
@@ -219,11 +219,11 @@ const int ttable1[32] = {
         '9',    //24
         '?',    //25
         '&',    //26
-        0x00,   //27 figure
+        '@',   //27 figure
         '.',    //28
         '/',    //29
         ';',    //30
-        0x00    //31 letter
+        '%'    //31 letter
 };
 
 BYTE __fastcall CFSK::baudot2ascii( BYTE c )
@@ -240,20 +240,48 @@ BOOL __fastcall CFSK::tinyIt( BYTE c, TMemo * Memo )
 {
         BYTE d;
         BOOL ret;
-        switch( c ){
-                case 0x1f: m_shift_state = 0; return TRUE;
-                case 0x1b: m_shift_state = 1; return TRUE;
-                case 0x00: return TRUE;  // Ignore BLANK
-                case 0x02: return TRUE;  // Ignore LF. Use WK } for CR
-                case '[': d = c; break;
-                case ']': d = c; break;
-                default: d = baudot2ascii(c & 0x1F); break;
+
+        switch ( c ) {
+
+        case 0x00:
+                return TRUE;  // Ignore BLANK
+        case '[':
+                d = c; break;  // PTT On
+        case ']':
+                d = c; break;  // PTT Off
+
+        // CR and LF sending depends on WK firmware and selected option
+        case 0x08: // CR
+                if ( m_CurlyCR )
+                        d = '}'; // Use special WK sequence CR LF LTRS
+                else
+                        d = baudot2ascii(c & 0x1F);
+                break;
+
+        case 0x02: // LF
+                if ( m_CurlyCR )
+                        return TRUE; // Ignore LF
+                else
+                        d = baudot2ascii(c & 0x1F);
+                break;
+
+        // FIGS and LTRS sending depends on WK firmware and selected option
+        case 0x1f: // LTRS
+        case 0x1b: // FIGS
+                m_shift_state = (c == 0x1f ? 0 : 1);
+                if( m_AutoFL )
+                        return TRUE; // FIGS and LTRS are not sent to WK, it does them automatically
+                else
+                        d = baudot2ascii(c & 0x1F);
+                break;
+
+        default:
+                d = baudot2ascii(c & 0x1F);
         }
 
         if ( !m_oPTT && d == ']' )
                 return TRUE;
 
-        DWORD sent;
 #ifndef NDEBUG
         char bf[128];
         if ( Memo ) {
@@ -261,6 +289,8 @@ BOOL __fastcall CFSK::tinyIt( BYTE c, TMemo * Memo )
                 Memo->Lines->Add(bf);
         }
 #endif
+
+        DWORD sent;
         ret = WriteFile( m_hPort, &d, 1, &sent, NULL );
 
 #ifndef NDEBUG
@@ -387,6 +417,8 @@ void __fastcall TExtFSK::ReadIniFile(void)
         RGDiddle->ItemIndex = pIniFile->ReadInteger("Settings", "Diddle", RGDiddle->ItemIndex);
         RGStopBits->ItemIndex = pIniFile->ReadInteger("Settings", "StopBits", RGStopBits->ItemIndex);
         CBReverse->Checked = pIniFile->ReadInteger("Settings", "Reverse", CBReverse->Checked);
+        CBCurlyCR->State = pIniFile->ReadInteger("Settings", "CurlyCR", CBCurlyCR->State);
+        CBAutoFL->State = pIniFile->ReadInteger("Settings", "AutoFL", CBAutoFL->State);
         CBFSKMap->Checked = pIniFile->ReadInteger("Settings", "FSKMAP", CBFSKMap->Checked);
         CBUSOS->Checked = pIniFile->ReadInteger("Settings", "USOS", CBUSOS->Checked);
         CBAutoCRLF->Checked = pIniFile->ReadInteger("Settings", "AutoCRLF", CBAutoCRLF->Checked);
@@ -403,6 +435,8 @@ void __fastcall TExtFSK::WriteIniFile(void)
         pIniFile->WriteInteger("Settings", "Diddle", RGDiddle->ItemIndex);
         pIniFile->WriteInteger("Settings", "StopBits", RGStopBits->ItemIndex);
         pIniFile->WriteInteger("Settings", "Reverse", CBReverse->Checked);
+        pIniFile->WriteInteger("Settings", "CurlyCR", CBCurlyCR->State);
+        pIniFile->WriteInteger("Settings", "AutoFL", CBAutoFL->State);
         pIniFile->WriteInteger("Settings", "FSKMAP", CBFSKMap->Checked);
         pIniFile->WriteInteger("Settings", "USOS", CBUSOS->Checked);
         pIniFile->WriteInteger("Settings", "AutoCRLF", CBAutoCRLF->Checked);
@@ -660,6 +694,12 @@ void __fastcall TExtFSK::SetPara()
         // AUTOCRLF
         if ( CBAutoCRLF->Checked )
                 data[2] |= 0x10;
+
+        // CurlyCR
+        m_fsk.m_CurlyCR = CBCurlyCR->State != cbUnchecked;
+
+        // AutoFL
+        m_fsk.m_AutoFL = CBAutoFL->State != cbUnchecked;
 
         int ret;
         ret = WriteFile( m_hPort, data, 4, &sent, NULL );

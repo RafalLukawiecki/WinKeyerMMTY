@@ -133,6 +133,8 @@ public:
         volatile HANDLE m_hPort;
         volatile int m_Baud;
         volatile int m_StgD;
+        volatile int m_CurlyCR;
+        volatile int m_AutoFL;
         __fastcall CFSK(void);
         void __fastcall Init(void);
         void __fastcall Timer(void);
@@ -174,6 +176,8 @@ __published:    // IDE
         TCheckBox *CBAutoCRLF;
         TRadioGroup *RGStopBits;
         TCheckBox *CBDebugOutput;
+        TCheckBox *CBCurlyCR;
+        TCheckBox *CBAutoFL;
         void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
         void __fastcall PortNameChange(TObject *Sender);
         void __fastcall SBMinClick(TObject *Sender);
